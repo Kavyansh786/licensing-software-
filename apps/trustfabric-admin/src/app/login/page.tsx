@@ -1,0 +1,149 @@
+'use client';
+
+import React, { useState } from 'react';
+import { apiClient, ApiError } from '@/lib/api-client';
+
+const ERROR_MESSAGES: Record<string, string> = {
+  session_expired: 'Your session has expired. Please sign in again.',
+};
+
+interface LoginPageProps {
+  searchParams?: Promise<{ redirectTo?: string; error?: string }>;
+}
+
+export default function LoginPage({ searchParams }: LoginPageProps) {
+  const unwrappedParams = searchParams ? React.use(searchParams) : {};
+  const redirectTo = unwrappedParams?.redirectTo ?? null;
+  const sessionErrorKey = unwrappedParams?.error ?? null;
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(
+    sessionErrorKey ? (ERROR_MESSAGES[sessionErrorKey] ?? null) : null,
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    try {
+      await apiClient('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+      const destination = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/dashboard';
+      // Full navigation, not router.push() — guarantees the browser's next
+      // request (including the middleware check) carries the just-set
+      // session cookie, with no client-router/middleware timing to reason about.
+      window.location.href = destination;
+    } catch (err: any) {
+      setError(err instanceof ApiError ? err.message : 'Unable to sign in. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-zinc-950 via-slate-900 to-zinc-950">
+      {/* Background decoration */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-blue-700/10 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-indigo-700/10 blur-3xl" />
+      </div>
+
+      <div className="relative z-10 w-full max-w-md px-6">
+        {/* Logo / branding */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-700 mb-5 shadow-lg shadow-blue-700/30">
+            <svg className="w-9 h-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-white tracking-tight">
+            Trustfabric
+          </h1>
+          <p className="mt-2 text-slate-400 text-sm">
+            Vendor Control Plane
+          </p>
+        </div>
+
+        {/* Card */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 shadow-2xl backdrop-blur-sm">
+          <h2 className="text-lg font-semibold text-white mb-1">
+            Sign in
+          </h2>
+          <p className="text-sm text-slate-400 mb-8">
+            Internal Trustfabric operator credentials only.
+          </p>
+
+          {error && (
+            <div className="mb-6 flex items-start gap-3 bg-red-500/10 border border-red-500/20 rounded-xl p-4">
+              <svg className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+              </svg>
+              <p className="text-sm text-red-300">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={submitting}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500
+                           focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent
+                           disabled:opacity-50 transition-all"
+                placeholder="you@trustfabric.com"
+              />
+            </div>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1.5">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={submitting}
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500
+                           focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent
+                           disabled:opacity-50 transition-all"
+                placeholder="••••••••"
+              />
+            </div>
+
+            <button
+              id="btn-sign-in"
+              type="submit"
+              disabled={submitting || !email || !password}
+              className="w-full px-5 py-3.5 rounded-xl bg-blue-700 hover:bg-blue-600 active:bg-blue-800
+                         disabled:opacity-50 disabled:cursor-not-allowed
+                         text-white font-semibold text-sm shadow-lg shadow-blue-700/20
+                         transition-all duration-200"
+            >
+              {submitting ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        </div>
+
+        {/* Footer */}
+        <p className="mt-8 text-center text-xs text-slate-600">
+          Internal use only. Contact IT if you need access.
+        </p>
+      </div>
+    </div>
+  );
+}
