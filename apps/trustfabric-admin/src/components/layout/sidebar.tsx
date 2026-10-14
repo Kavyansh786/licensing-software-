@@ -17,6 +17,7 @@ import {
   Search,
   PanelLeftClose,
   PanelLeft,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,6 +35,7 @@ const NAV_GROUPS = [
       { name: 'Entitlements', href: '/entitlements', icon: FileCheck2, requiresAdmin: false },
       { name: 'Activations', href: '/activations', icon: KeyRound, requiresAdmin: false },
       { name: 'Installations', href: '/installations', icon: MonitorCheck, requiresAdmin: false },
+      { name: 'Fleet Health', href: '/fleet-health', icon: ShieldCheck, requiresAdmin: false },
     ]
   },
   {

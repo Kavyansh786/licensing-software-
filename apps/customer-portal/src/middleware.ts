@@ -49,6 +49,8 @@ export function middleware(request: NextRequest) {
     (authMode === 'e2e' ? !!request.cookies.get(E2E_SESSION_COOKIE)?.value : !!request.cookies.get(SESSION_COOKIE_NAME)?.value) ||
     (isDevOrTest && !!request.cookies.get(E2E_SESSION_COOKIE)?.value);
 
+  console.log(`[Middleware] Path: ${pathname} | hasSession: ${hasSession} | cookies: ${request.cookies.getAll().map(c => c.name).join(', ')}`);
+
   if (!hasSession) {
     const loginUrl = new URL('/login', request.url);
     // Preserve the intended destination for post-login redirect

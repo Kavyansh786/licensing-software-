@@ -85,6 +85,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const isLoginPage = pathname === '/login' || pathname?.startsWith('/login');
+
+  if (isLoginPage) {
+    return (
+      <AuthContext.Provider value={{ user: user as UserIdentity, logout }}>
+        {children}
+      </AuthContext.Provider>
+    );
+  }
+
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">

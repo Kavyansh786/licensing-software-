@@ -18,6 +18,19 @@ interface AuditEvent {
   createdAt: string;
 }
 
+const ACTION_LABELS: Record<string, { label: string; badgeClass?: string }> = {
+  AGENT_COMMAND_ISSUED: { label: 'Agent Command Issued', badgeClass: 'bg-blue-50 text-blue-700 ring-1 ring-blue-200' },
+  AGENT_COMMAND_ACKNOWLEDGED: { label: 'Agent Command Acknowledged', badgeClass: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
+  AGENT_COMMAND_CANCELLED: { label: 'Agent Command Cancelled', badgeClass: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' },
+  UPDATE_COMPANY_TELEMETRY_SETTINGS: { label: 'Updated Fleet Telemetry Policy', badgeClass: 'bg-purple-50 text-purple-700 ring-1 ring-purple-200' },
+  FIRST_TELEMETRY_RECEIVED: { label: 'First Telemetry Received', badgeClass: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
+  SERVICE_STATE_TRANSITION: { label: 'Service State Transition', badgeClass: 'bg-zinc-100 text-zinc-700 ring-1 ring-zinc-200' },
+  APPROVE_INSTALLATION: { label: 'Approve Installation', badgeClass: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200' },
+  REJECT_INSTALLATION: { label: 'Reject Installation', badgeClass: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
+  SUSPEND_INSTALLATION: { label: 'Suspend Installation', badgeClass: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200' },
+  REVOKE_INSTALLATION: { label: 'Revoke Installation', badgeClass: 'bg-red-50 text-red-700 ring-1 ring-red-200' },
+};
+
 export default function AuditPage() {
   const { user, selectedCompanyId } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -81,7 +94,11 @@ export default function AuditPage() {
                 {events.map((evt) => (
                   <tr key={evt.id} className="border-b last:border-0 hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 text-slate-500 whitespace-nowrap">{new Date(evt.createdAt).toLocaleString()}</td>
-                    <td className="px-6 py-4 font-medium">{evt.action}</td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${ACTION_LABELS[evt.action]?.badgeClass || 'bg-slate-100 text-slate-800'}`}>
+                        {ACTION_LABELS[evt.action]?.label || evt.action.replace(/_/g, ' ')}
+                      </span>
+                    </td>
                     <td className="px-6 py-4">{evt.actorId}</td>
                     <td className="px-6 py-4">{evt.targetType}</td>
                     <td className="px-6 py-4">{evt.company?.name || evt.companyId || '-'}</td>

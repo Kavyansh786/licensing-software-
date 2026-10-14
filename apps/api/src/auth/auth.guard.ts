@@ -61,6 +61,11 @@ export class AuthGuard implements CanActivate {
       return this.handleE2eAuth(request);
     }
 
+    // In dev/test, if password session cookie is present, handle session auth seamlessly
+    if (isDevOrTest && (request.cookies?.[this.sessionService.customerCookieName] || request.cookies?.[this.sessionService.vendorCookieName])) {
+      return this.handleSessionAuth(request, response);
+    }
+
     if (authMode === 'e2e') {
       return this.handleE2eAuth(request);
     }

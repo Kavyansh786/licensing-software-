@@ -35,18 +35,33 @@ model Company {
   // not defaulted to "reject everything," so onboarding a company doesn't
   // silently break registration until someone configures this.
   allowedEmailDomains String[] @default([])
+  // Controls whether agents enrolled under this company report fleet telemetry
+  // (ping, scan summaries, enforcement counts). Default true.
+  telemetryEnabled    Boolean  @default(true)
+  // When false (default), file paths in scan summaries are anonymized as
+  // sha256:<salt+path> hashes and scan summaries contain only coarse drive letters.
+  // When true, the company admin has explicitly authorized literal file paths
+  // to be transmitted to the fleet dashboard.
+  syncFullPaths       Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  enterprise       Enterprise          @relation(fields: [enterpriseId], references: [id])
-  users            User[]
-  roles            Role[]
-  allocations      LicenseAllocation[]
-  licenseRequests  LicenseRequest[]
-  installations    Installation[]
-  auditEvents      AuditEvent[]
-  enrollmentTokens EnrollmentToken[]
-  activations      Activation[]
+  enterprise                   Enterprise                   @relation(fields: [enterpriseId], references: [id])
+  users                        User[]
+  roles                        Role[]
+  allocations                  LicenseAllocation[]
+  licenseRequests              LicenseRequest[]
+  installations                Installation[]
+  auditEvents                  AuditEvent[]
+  enrollmentTokens             EnrollmentToken[]
+  activations                  Activation[]
+  installationTelemetryStates InstallationTelemetryState[]
+  serviceStatusEvents          ServiceStatusEvent[]
+  scanRuns                     ScanRun[]
+  enforcementWindows           EnforcementWindow[]
+  agentCommands                AgentCommand[]
+  cloudConnectorConfig         CloudConnectorConfig?
+  cloudConnectorSyncStates     CloudConnectorSyncState[]
 
   @@index([enterpriseId])
 }
@@ -82,6 +97,7 @@ model User {
   // actorId on LicenseRequest.requestedBy, not a relation).
   targetedRequests   LicenseRequest[]   @relation("LicenseRequestTargetUser")
   activations        Activation[]
+  issuedAgentCommands AgentCommand[]     @relation("AgentCommandIssuedBy")
 
   @@index([email])
 }
@@ -448,6 +464,13 @@ model Installation {
   // row pair.
   currentFor      Activation?       @relation("ActivationCurrentInstallation")
 
+  telemetryState        InstallationTelemetryState?
+  serviceStatusEvents   ServiceStatusEvent[]
+  scanRuns              ScanRun[]
+  scanFindingSummaries  ScanFindingSummary[]
+  enforcementWindows    EnforcementWindow[]
+  agentCommands         AgentCommand[]
+
   @@index([companyId])
   @@index([allocationId])
   @@index([deviceId])
@@ -474,4 +497,188 @@ model AuditEvent {
   @@index([companyId])
   @@index([enterpriseId])
   @@index([createdAt])
+}
+
+// ─── Fleet Telemetry Models ──────────────────────────────────────────────────
+
+// Hot row: live state for an installation updated on every ping.
+model InstallationTelemetryState {
+  id                 String    @id @default(uuid())
+  installationId     String    @unique
+  companyId          String
+  clientTime         DateTime?
+  serverTime         DateTime  @default(now())
+  serviceRunning     Boolean   @default(false)
+  watcherActive      Boolean   @default(false)
+  serviceStartedAt   DateTime?
+  policyHash         String?
+  agentVersion       String?
+  applicationVersion String?
+  outboxDepth        Int       @default(0)
+  lastScanAt         DateTime?
+  lastEnforcementAt  DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([installationId])
+}
+
+// Cold history: service/watcher state changes or periodic (>= 15 min) snapshot.
+model ServiceStatusEvent {
+  id             String   @id @default(uuid())
+  installationId String
+  companyId      String
+  serviceRunning Boolean
+  watcherActive  Boolean
+  recordedAt     DateTime @default(now())
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([installationId, recordedAt])
+  @@index([companyId, recordedAt])
+}
+
+// Completed/cancelled/failed scan summary.
+model ScanRun {
+  id               String    @id @default(uuid())
+  installationId   String
+  companyId        String
+  clientScanId     String    // Client idempotency key
+  scanSource       String    // "directory_scan" | "full_system_scan"
+  targetSummary    String?   // Drive letters summary or folder when syncFullPaths
+  status           String    // "completed" | "cancelled" | "failed"
+  startedAt        DateTime
+  completedAt      DateTime?
+  durationSeconds  Int       @default(0)
+  filesScanned     Int       @default(0)
+  filesWithPii     Int       @default(0)
+  totalFindings    Int       @default(0)
+  highestTier      String?
+  tierCounts       Json?     // e.g. {"Confidential": 4}
+  entityTypeTotals Json?     // e.g. {"EMAIL_ADDRESS": 12}
+  filesTruncated   Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+
+  installation Installation         @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  company      Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  findings     ScanFindingSummary[]
+
+  @@unique([installationId, clientScanId])
+  @@index([companyId, startedAt])
+  @@index([installationId, startedAt])
+}
+
+// Capped per-file scan findings (tier >= Confidential, highest first).
+model ScanFindingSummary {
+  id               String   @id @default(uuid())
+  scanRunId        String
+  installationId   String
+  pathRef          String   // sha256:... or literal path if syncFullPaths enabled
+  tier             String
+  entityTypeCounts Json     // e.g. {"IN_AADHAAR": 1}
+  sampleEvidence   String?  // Masked evidence sample (e.g. "jo****om" or "41********44")
+  watermarkStatus  String?  // "APPLIED" | "PENDING" | null
+  createdAt        DateTime @default(now())
+
+  scanRun      ScanRun      @relation(fields: [scanRunId], references: [id], onDelete: Cascade)
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+
+  @@index([scanRunId])
+  @@index([installationId])
+}
+
+// 15-minute UTC-aligned enforcement event aggregation window.
+model EnforcementWindow {
+  id             String   @id @default(uuid())
+  installationId String
+  companyId      String
+  windowStart    DateTime
+  windowEnd      DateTime
+  source         String   // "Word" | "Excel" | "Filesystem Watcher"
+  actionCounts   Json     // {"block": 2, "quarantine": 1, ...}
+  tierCounts     Json     // {"Restricted": 2}
+  overrideCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([installationId, windowStart, source])
+  @@index([companyId, windowStart])
+  @@index([installationId, windowStart])
+}
+
+// Admin-issued asynchronous command to an agent.
+model AgentCommand {
+  id             String    @id @default(uuid())
+  installationId String
+  companyId      String
+  commandType    String    // "force_policy_refresh" | "request_diagnostic_snapshot" | "request_service_restart"
+  status         String    @default("PENDING") // PENDING, DELIVERED, ACKNOWLEDGED, EXPIRED, CANCELLED
+  issuedByUserId String
+  issuedAt       DateTime  @default(now())
+  expiresAt      DateTime
+  deliveredAt    DateTime?
+  acknowledgedAt DateTime?
+  result         String?   // "success" | "failed" | "unsupported"
+  resultDetail   String?   // Diagnostic snapshot JSON or error detail <= 2048 chars
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  issuedByUser User         @relation("AgentCommandIssuedBy", fields: [issuedByUserId], references: [id])
+
+  @@index([installationId, status])
+  @@index([companyId, status])
+}
+
+// ─── Office 365 Cloud Connector Models ────────────────────────────────────────
+
+// Per-company Azure AD application registration and connector configuration.
+model CloudConnectorConfig {
+  id                    String    @id @default(uuid())
+  companyId             String    @unique
+  tenantId              String
+  clientId              String
+  clientSecretEncrypted String?   // Encrypted at rest (AES-256-GCM)
+  certificateThumbprint String?   // Alternative to client secret
+  adminConsentGranted   Boolean   @default(false)
+  enabled               Boolean   @default(true)
+  pollIntervalMinutes   Int       @default(5)
+  dryRunMode            Boolean   @default(true) // Dry run mode for quarantine and watermarking (§1.5, §1.6)
+  quarantineLibraryName String    @default("clAIssify-Quarantine")
+  lastSyncAt            DateTime?
+  status                String    @default("PENDING_CONSENT") // PENDING_CONSENT, CONFIGURED, SYNCING, ERROR
+  statusMessage         String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// Company-scoped delta cursor state per SharePoint site or OneDrive user drive.
+model CloudConnectorSyncState {
+  id           String    @id @default(uuid())
+  companyId    String
+  resourceType String    // "sharepoint_site" | "onedrive_user"
+  resourceId   String    // Graph site-id or drive-id
+  resourceName String    // Site title or userPrincipalName
+  deltaLink    String?   @db.Text
+  lastSyncAt   DateTime  @default(now())
+  itemCount    Int       @default(0)
+  status       String    @default("IDLE") // IDLE, SYNCING, ERROR
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, resourceType, resourceId])
+  @@index([companyId])
 }
