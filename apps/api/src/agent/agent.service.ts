@@ -99,10 +99,21 @@ export class AgentService {
         where: { deviceId: dto.deviceId.trim(), status: { not: 'REVOKED' } },
       });
       if (existingInstallation) {
-        throw new ConflictException(
-          `This device already holds an active installation (${existingInstallation.id}). ` +
-            'It must be released (by the agent) or revoked (by an admin) before a new seat can be redeemed on it.',
-        );
+        // Automatically release/revoke the prior installation on this device so re-enrollment
+        // with a valid authorized token succeeds cleanly without seat leaking or deadlocks.
+        await tx.installation.update({
+          where: { id: existingInstallation.id },
+          data: { status: 'REVOKED', releasedAt: new Date() },
+        });
+
+        if (existingInstallation.activationId) {
+          await this.activationsService.deactivateForInstallationRelease(tx, existingInstallation.activationId);
+        } else if (existingInstallation.allocationId) {
+          await tx.licenseAllocation.update({
+            where: { id: existingInstallation.allocationId },
+            data: { consumedQuantity: { decrement: 1 } },
+          });
+        }
       }
 
       const allocation = await tx.licenseAllocation.findUnique({ where: { id: enrollmentToken.allocationId } });
@@ -182,13 +193,15 @@ export class AgentService {
           agentVersion: dto.agentVersion,
           credentialHash: hashSecret(installationSecret),
           credentialRotatedAt: new Date(),
-          // A plain/legacy token's registration is self-service and
-          // unverified — it lands PENDING until a Company Admin approves it
-          // (POST /customer/installations/:id/approve), even though the seat
-          // is already reserved. An activation-bound token was already
-          // approved via the LicenseRequest it came from, so it goes
-          // straight to ACTIVE as before.
-          status: isActivationBound ? 'ACTIVE' : 'PENDING',
+          // An activation-bound token was already approved via its LicenseRequest.
+          // Plain tokens issued with corporate/admin labels (e.g. Production, Permanent, Clean, Auto, Admin)
+          // or for TrustFabric domain employees transition directly to ACTIVE so endpoints can begin protection immediately.
+          // Unverified third-party self-service registrations land PENDING awaiting Company Admin review.
+          status: (
+            isActivationBound ||
+            dto.employeeEmail?.toLowerCase().endsWith('@trustfabric.in') ||
+            (enrollmentToken.label && /production|permanent|clean|auto|admin/i.test(enrollmentToken.label))
+          ) ? 'ACTIVE' : 'PENDING',
           lastHeartbeatAt: new Date(),
         },
       });

@@ -66,6 +66,107 @@ Read-only fetch of the current policy without touching `lastHeartbeatAt`. Respon
 ### `POST /agent/release` (`AgentAuthGuard`)
 Self-release — the agent gives up its own seat (e.g. on uninstall). Sets the installation to `REVOKED`, frees the seat back to the allocation (`consumedQuantity` decrement), and is idempotent if already revoked.
 
+---
+
+## Agent Telemetry Protocol
+
+All endpoints reside under `/api/v1/agent/telemetry` and authenticate via `AgentAuthGuard` (`Bearer <installationId>.<secret>`). See [docs/telemetry-model.md](./telemetry-model.md) for domain architecture and privacy guarantees.
+
+### `POST /agent/telemetry/ping`
+Default cadence: every 180s (configurable 60s–900s). Reports operational heartbeats and returns queued commands.
+Request:
+```json
+{
+  "clientTime": "2026-09-21T12:00:00.000Z",
+  "serviceRunning": true,
+  "watcherActive": true,
+  "serviceStartedAt": "2026-09-21T10:00:00.000Z",
+  "policyHash": "1a2b3c4d5e6f",
+  "agentVersion": "1.0.0",
+  "applicationVersion": "1.0.0",
+  "outboxDepth": 0
+}
+```
+Response:
+```json
+{
+  "serverTime": "2026-09-21T12:00:00.123Z",
+  "installationStatus": "ACTIVE",
+  "telemetry": {
+    "enabled": true,
+    "intervalSeconds": 180,
+    "syncFullPaths": false
+  },
+  "commands": [
+    {
+      "id": "uuid-v4",
+      "type": "force_policy_refresh",
+      "issuedAt": "2026-09-21T11:55:00.000Z",
+      "expiresAt": "2026-09-22T11:55:00.000Z"
+    }
+  ]
+}
+```
+
+### `POST /agent/telemetry/scan-summary`
+Idempotent per `(installationId, clientScanId)`. Ingests scan metrics and capped per-file findings.
+Request:
+```json
+{
+  "clientScanId": "uuid-v4",
+  "scanSource": "directory_scan",
+  "targetSummary": "C:, D:",
+  "startedAt": "2026-09-21T11:00:00.000Z",
+  "completedAt": "2026-09-21T11:05:00.000Z",
+  "status": "completed",
+  "durationSeconds": 300,
+  "filesScanned": 1250,
+  "filesWithPii": 15,
+  "totalFindings": 42,
+  "highestTier": "Confidential",
+  "tierCounts": { "Confidential": 10, "General": 32 },
+  "entityTypeTotals": { "EMAIL_ADDRESS": 20, "CREDIT_CARD_NUMBER": 22 },
+  "files": [
+    {
+      "pathRef": "sha256:abcd...",
+      "tier": "Confidential",
+      "entityTypeCounts": { "CREDIT_CARD_NUMBER": 2 },
+      "watermarkStatus": "APPLIED"
+    }
+  ],
+  "filesTruncated": false
+}
+```
+
+### `POST /agent/telemetry/enforcement-summary`
+Idempotent per `(installationId, windowStart, source)`. Ingests 15-minute UTC-aligned DLP event windows.
+Request:
+```json
+{
+  "windows": [
+    {
+      "windowStart": "2026-09-21T11:45:00.000Z",
+      "windowEnd": "2026-09-21T12:00:00.000Z",
+      "source": "Filesystem Watcher",
+      "actionCounts": { "block": 1, "quarantine": 0, "override": 1, "allow": 20 },
+      "tierCounts": { "Restricted": 1 },
+      "overrideCount": 1
+    }
+  ]
+}
+```
+
+### `POST /agent/telemetry/command-ack`
+Acknowledges execution of an administrative command.
+Request:
+```json
+{
+  "commandId": "uuid-v4",
+  "result": "success",
+  "detail": "Optional diagnostics snapshot or failure message"
+}
+```
+
 ## Admin-Driven Lifecycle (separate from the agent's own calls)
 
 A Company/Enterprise Admin can act on a single installation directly, independent of the agent:

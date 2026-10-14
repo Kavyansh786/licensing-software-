@@ -22,7 +22,8 @@ import {
   PanelLeft,
   ChevronUp,
   LogOut,
-  User
+  User,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -56,6 +57,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
       { name: 'License Requests', href: '/license-requests', icon: FileCheck2, requiresAdmin: false, badgeKey: 'pendingLicenseRequests', enterpriseOnly: true },
       { name: 'Activations', href: '/activations', icon: KeyRound, requiresAdmin: false },
       { name: 'Installations', href: '/installations', icon: MonitorCheck, requiresAdmin: false },
+      { name: 'Fleet Protection', href: '/telemetry', icon: ShieldCheck, requiresAdmin: false },
     ]
   },
   {
@@ -68,7 +70,7 @@ const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
   {
     label: 'SUPPORT',
     items: [
-      { name: 'Help & Documentation', href: '#', icon: HelpCircle, requiresAdmin: false },
+      { name: 'Help & Documentation', href: '/docs', icon: HelpCircle, requiresAdmin: false },
       { name: 'Contact Support', href: '#', icon: Headset, requiresAdmin: false },
     ]
   }

@@ -9,7 +9,7 @@ import { useAuth } from '@/components/providers/auth-provider';
 import { ShieldCheck, Users, Key, Monitor, ArrowRight, Plus, FileText, UserCheck, Gauge, Clock3, Activity, CheckCircle2, XCircle } from 'lucide-react';
 import Link from 'next/link';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
-import type { LicenseAllocation, LicenseRequest } from '@/lib/types';
+import type { LicenseAllocation, LicenseRequest, TelemetrySummaryResponse } from '@/lib/types';
 
 export default function OverviewPage() {
   const { selectedCompanyId, user } = useAuth();
@@ -27,6 +27,7 @@ export default function OverviewPage() {
   const [companyUtilization, setCompanyUtilization] = useState<any[]>([]);
   const [recentRequests, setRecentRequests] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [telemetrySummary, setTelemetrySummary] = useState<TelemetrySummaryResponse | null>(null);
 
   const isEnterpriseScope = selectedCompanyId === '*';
 
@@ -44,11 +45,13 @@ export default function OverviewPage() {
         });
         setCompanyUtilization(summaryRes.companyUtilization || []);
 
-        // Load allocations (for real seat-consumption totals), requests, and activity
-        const [allocationsRes, requestsRes, auditRes] = await Promise.allSettled([
+        // Load allocations, requests, activity, and telemetry fleet summary
+        const telemetryQuery = selectedCompanyId !== '*' ? `?companyId=${selectedCompanyId}&days=7` : '?days=7';
+        const [allocationsRes, requestsRes, auditRes, telemetryRes] = await Promise.allSettled([
           apiClient<LicenseAllocation[]>('/licenses'),
           apiClient<LicenseRequest[]>('/license-requests'),
-          apiClient<{ data: any[] }>('/audit?limit=4')
+          apiClient<{ data: any[] }>('/audit?limit=4'),
+          apiClient<TelemetrySummaryResponse>(`/customer/telemetry/summary${telemetryQuery}`)
         ]);
 
         if (allocationsRes.status === 'fulfilled') {
@@ -60,6 +63,9 @@ export default function OverviewPage() {
         }
         if (auditRes.status === 'fulfilled') {
           setRecentActivity(auditRes.value.data);
+        }
+        if (telemetryRes.status === 'fulfilled') {
+          setTelemetrySummary(telemetryRes.value);
         }
 
       } catch (err: any) {
@@ -180,6 +186,117 @@ export default function OverviewPage() {
           );
         })}
       </div>
+
+      {/* Fleet Telemetry & Protection KPIs */}
+      {telemetrySummary && (
+        <div className="mb-6 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Fleet Protection & Telemetry (7 Days)
+            </h3>
+            <Link
+              href="/telemetry"
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 flex items-center transition-colors"
+            >
+              Open Fleet Protection <ArrowRight className="ml-1 h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {/* Protected Devices */}
+            <Card className="border border-zinc-200/60 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-500">Protected Devices</span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-zinc-900">
+                  {telemetrySummary.totalProtected}{' '}
+                  <span className="text-xs font-normal text-zinc-400">/ {telemetrySummary.totalDevices} live</span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  {telemetrySummary.totalDevices > 0
+                    ? `${Math.round((telemetrySummary.totalProtected / telemetrySummary.totalDevices) * 100)}% fleet coverage`
+                    : 'No devices registered'}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Stale / Offline */}
+            <Card className="border border-zinc-200/60 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-500">Stale or Offline</span>
+                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-amber-600">
+                  {telemetrySummary.staleOrOffline}
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">Endpoints missing recent ping</p>
+              </CardContent>
+            </Card>
+
+            {/* Files Audited */}
+            <Card className="border border-zinc-200/60 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-500">Files Audited (7d)</span>
+                  <FileText className="h-4 w-4 text-blue-500" />
+                </div>
+                <div className="mt-2 text-2xl font-bold text-zinc-900">
+                  {telemetrySummary.filesScanned.toLocaleString()}
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">Scanned by ClAIssify agents</p>
+              </CardContent>
+            </Card>
+
+            {/* Findings by Tier */}
+            <Card className="border border-zinc-200/60 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-500">Findings by Tier</span>
+                  <ShieldCheck className="h-4 w-4 text-purple-500" />
+                </div>
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  {Object.entries(telemetrySummary.findingsByTier).length > 0 ? (
+                    Object.entries(telemetrySummary.findingsByTier).map(([t, count]) => (
+                      <span
+                        key={t}
+                        className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-zinc-100 text-zinc-700"
+                        title={`${t}: ${count}`}
+                      >
+                        {t.slice(0, 4)}: {count}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs text-zinc-400">0 findings</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">Confidential & above</p>
+              </CardContent>
+            </Card>
+
+            {/* Enforcement Actions */}
+            <Card className="border border-zinc-200/60 shadow-sm">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-zinc-500">DLP Actions</span>
+                  <Activity className="h-4 w-4 text-red-500" />
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold text-red-600">
+                    {telemetrySummary.enforcementByAction.block || 0}
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    blk / {telemetrySummary.enforcementByAction.quarantine || 0} quar / {telemetrySummary.enforcementByAction.override || 0} over
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-1">Real-time save actions</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
 
       {/* Middle Grid */}
       {isEnterpriseScope && (

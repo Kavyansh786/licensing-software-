@@ -15,9 +15,11 @@ import { apiClient, ApiError } from '@/lib/api-client';
 import { Installation, InstallationStatus } from '@/lib/types';
 import {
   Hash, Monitor, Building2, Package, Cpu, Activity, Calendar,
-  PauseCircle, PlayCircle, Ban, User, Mail, CheckCircle2, XCircle,
+  PauseCircle, PlayCircle, Ban, User, Mail, CheckCircle2, XCircle, ShieldCheck
 } from 'lucide-react';
 import { INSTALLATION_STATUS_CONFIG, INSTALLATION_VALID_TRANSITIONS } from './installation-status';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { InstallationProtectionTab } from './installation-protection-tab';
 
 function DetailRow({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: React.ReactNode }) {
   return (
@@ -56,6 +58,7 @@ const ENDPOINT_FOR_ACTION: Record<ConfirmAction, string> = {
 interface InstallationDetailsDialogProps {
   installation: Installation;
   canManage: boolean;
+  defaultTab?: 'identity' | 'protection';
   onClose: () => void;
   onChanged: () => void;
 }
@@ -63,6 +66,7 @@ interface InstallationDetailsDialogProps {
 export function InstallationDetailsDialog({
   installation,
   canManage,
+  defaultTab = 'identity',
   onClose,
   onChanged,
 }: InstallationDetailsDialogProps) {
@@ -127,60 +131,78 @@ export function InstallationDetailsDialog({
   return (
     <>
       <Dialog open={!confirmAction} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="sm:max-w-[560px]">
+        <DialogContent className="sm:max-w-[660px]">
           <DialogHeader>
             <DialogTitle className="text-sm font-semibold text-zinc-800 flex items-center gap-2">
               <Monitor className="h-4 w-4 text-zinc-400" />
               {installation.hostname || 'Unnamed device'}
             </DialogTitle>
             <DialogDescription className="text-xs text-zinc-400">
-              Full installation record and available management actions
+              Installation records, license lifecycle, and operational fleet protection telemetry
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-[60vh] overflow-y-auto pr-1">
-            <SectionLabel>Identity</SectionLabel>
-            <DetailRow icon={Hash} label="Installation ID" value={<code className="text-[11px]">{installation.id}</code>} />
-            <DetailRow icon={Cpu} label="Device ID" value={<code className="text-[11px]">{installation.deviceId}</code>} />
-            <DetailRow icon={Monitor} label="Hostname" value={installation.hostname || '—'} />
+          <Tabs defaultValue={defaultTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-2">
+              <TabsTrigger value="identity">Identity & License</TabsTrigger>
+              <TabsTrigger value="protection" className="flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Protection & Fleet
+              </TabsTrigger>
+            </TabsList>
 
-            {(installation.employeeName || installation.employeeEmail) && (
-              <>
-                <SectionLabel>Requested By</SectionLabel>
-                <DetailRow icon={User} label="Name" value={installation.employeeName || '—'} />
-                <DetailRow icon={Mail} label="Email" value={installation.employeeEmail || '—'} />
-              </>
-            )}
+            <TabsContent value="identity">
+              <div className="max-h-[60vh] overflow-y-auto pr-1">
+                <SectionLabel>Identity</SectionLabel>
+                <DetailRow icon={Hash} label="Installation ID" value={<code className="text-[11px]">{installation.id}</code>} />
+                <DetailRow icon={Cpu} label="Device ID" value={<code className="text-[11px]">{installation.deviceId}</code>} />
+                <DetailRow icon={Monitor} label="Hostname" value={installation.hostname || '—'} />
 
-            <SectionLabel>Ownership</SectionLabel>
-            <DetailRow icon={Building2} label="Company" value={installation.company?.name ?? installation.companyId} />
-            <DetailRow icon={Package} label="Allocation" value={<code className="text-[11px]">{installation.allocationId}</code>} />
+                {(installation.employeeName || installation.employeeEmail) && (
+                  <>
+                    <SectionLabel>Requested By</SectionLabel>
+                    <DetailRow icon={User} label="Name" value={installation.employeeName || '—'} />
+                    <DetailRow icon={Mail} label="Email" value={installation.employeeEmail || '—'} />
+                  </>
+                )}
 
-            <SectionLabel>Status</SectionLabel>
-            <DetailRow
-              icon={Activity}
-              label="Current Status"
-              value={
-                <Badge variant="outline" className={statusCfg.classes}>
-                  {statusCfg.label}
-                </Badge>
-              }
-            />
+                <SectionLabel>Ownership</SectionLabel>
+                <DetailRow icon={Building2} label="Company" value={installation.company?.name ?? installation.companyId} />
+                <DetailRow icon={Package} label="Allocation" value={<code className="text-[11px]">{installation.allocationId}</code>} />
 
-            <SectionLabel>Telemetry</SectionLabel>
-            <DetailRow icon={Activity} label="Last Heartbeat" value={fmtDateTime(installation.lastHeartbeatAt)} />
-            <DetailRow icon={Cpu} label="OS" value={[installation.os, installation.osVersion].filter(Boolean).join(' ') || '—'} />
-            <DetailRow icon={Cpu} label="Architecture" value={installation.architecture || '—'} />
-            <DetailRow icon={Package} label="Application Version" value={installation.applicationVersion || '—'} />
-            <DetailRow icon={Package} label="Agent Version" value={installation.agentVersion || '—'} />
+                <SectionLabel>Status</SectionLabel>
+                <DetailRow
+                  icon={Activity}
+                  label="Current Status"
+                  value={
+                    <Badge variant="outline" className={statusCfg.classes}>
+                      {statusCfg.label}
+                    </Badge>
+                  }
+                />
 
-            <SectionLabel>Lifecycle</SectionLabel>
-            <DetailRow icon={Calendar} label="Registered" value={fmtDateTime(installation.createdAt)} />
-            <DetailRow icon={Calendar} label="Last Updated" value={fmtDateTime(installation.updatedAt)} />
-            {installation.releasedAt && (
-              <DetailRow icon={Calendar} label="Released / Revoked" value={fmtDateTime(installation.releasedAt)} />
-            )}
-          </div>
+                <SectionLabel>Licensing Heartbeat</SectionLabel>
+                <DetailRow icon={Activity} label="Last Heartbeat" value={fmtDateTime(installation.lastHeartbeatAt)} />
+                <DetailRow icon={Cpu} label="OS" value={[installation.os, installation.osVersion].filter(Boolean).join(' ') || '—'} />
+                <DetailRow icon={Cpu} label="Architecture" value={installation.architecture || '—'} />
+                <DetailRow icon={Package} label="Application Version" value={installation.applicationVersion || '—'} />
+                <DetailRow icon={Package} label="Agent Version" value={installation.agentVersion || '—'} />
+
+                <SectionLabel>Lifecycle</SectionLabel>
+                <DetailRow icon={Calendar} label="Registered" value={fmtDateTime(installation.createdAt)} />
+                <DetailRow icon={Calendar} label="Last Updated" value={fmtDateTime(installation.updatedAt)} />
+                {installation.releasedAt && (
+                  <DetailRow icon={Calendar} label="Released / Revoked" value={fmtDateTime(installation.releasedAt)} />
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="protection">
+              <div className="max-h-[60vh] overflow-y-auto pr-1">
+                <InstallationProtectionTab installationId={installation.id} canManage={canManage} />
+              </div>
+            </TabsContent>
+          </Tabs>
 
           {error && (
             <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">

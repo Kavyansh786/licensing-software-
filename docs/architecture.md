@@ -18,6 +18,7 @@ graph TD
         Lic[Licensing Module]
         Inst[Installation Module]
         AgentMod[Agent Module]
+        AgentTelem[Agent Telemetry Module]
         Enroll[Enrollment Tokens Module]
         Audit[Audit Module]
 
@@ -26,8 +27,10 @@ graph TD
         Auth --> Inst
         Auth --> Enroll
         Auth --> Audit
+        Auth --> AgentTelem
         Enroll --> AgentMod
         AgentMod --> Inst
+        AgentTelem --> Inst
     end
 
     API --> DB[(PostgreSQL)]
@@ -41,6 +44,7 @@ graph TD
 - **Installation Module:** Tracks devices and software instances consuming licenses; exposes admin suspend/unsuspend/revoke.
 - **Enrollment Tokens Module:** Lets Company/Enterprise Admins issue the single/limited-use tokens an agent redeems to activate.
 - **Agent Module:** The `/api/v1/agent/*` surface an installed agent calls directly — register, heartbeat, policy, release.
+- **Agent Telemetry Module:** Ingests operational pings, scan summaries, and enforcement aggregation windows from agents; queues administrative commands; provides fleet protection KPIs and telemetry status to customer administrators. See [Telemetry Model](./telemetry-model.md).
 - **Audit Module:** Records all security and state-changing events.
 
 ## Persistence

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -16,9 +17,11 @@ import { EditionsModule } from './editions/editions.module.js';
 import { FeaturesModule } from './features/features.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { ActivationsModule } from './activations/activations.module.js';
+import { AgentTelemetryModule } from './agent-telemetry/agent-telemetry.module.js';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     AuthModule,
     PrismaModule,
     AuditModule,
@@ -33,9 +36,11 @@ import { ActivationsModule } from './activations/activations.module.js';
     EditionsModule,
     FeaturesModule,
     CustomersModule,
-    ActivationsModule
+    ActivationsModule,
+    AgentTelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
+

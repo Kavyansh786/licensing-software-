@@ -3,42 +3,58 @@
 import React, { useState } from 'react';
 import { apiClient, ApiError } from '@/lib/api-client';
 
+import { useSearchParams } from 'next/navigation';
+
 const ERROR_MESSAGES: Record<string, string> = {
   session_expired: 'Your session has expired. Please sign in again.',
 };
 
-interface LoginPageProps {
-  searchParams?: Promise<{ redirectTo?: string; error?: string }>;
-}
+function LoginForm() {
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectTo');
+  const sessionErrorKey = searchParams.get('error');
+  const urlEmail = searchParams.get('email') || '';
+  const urlPassword = searchParams.get('password') || '';
 
-export default function LoginPage({ searchParams }: LoginPageProps) {
-  const unwrappedParams = searchParams ? React.use(searchParams) : {};
-  const redirectTo = unwrappedParams?.redirectTo ?? null;
-  const sessionErrorKey = unwrappedParams?.error ?? null;
-
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(urlEmail);
+  const [password, setPassword] = useState(urlPassword);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(
     sessionErrorKey ? (ERROR_MESSAGES[sessionErrorKey] ?? null) : null,
   );
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError(null);
     setSubmitting(true);
     try {
-      await apiClient('/auth/login', {
+      const emailEl = (typeof document !== 'undefined' ? document.getElementById('email') : null) as HTMLInputElement | null;
+      const passEl = (typeof document !== 'undefined' ? document.getElementById('password') : null) as HTMLInputElement | null;
+      const finalEmail = (emailEl?.value || email || urlEmail).trim();
+      const finalPassword = passEl?.value || password || urlPassword;
+
+      if (!finalEmail || !finalPassword) {
+        setError('Please enter both your email and password.');
+        setSubmitting(false);
+        return;
+      }
+
+      console.log('[Login] Submitting credentials for:', finalEmail);
+      const res = await apiClient('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: finalEmail, password: finalPassword }),
       });
-      const destination = redirectTo && redirectTo.startsWith('/') ? redirectTo : '/overview';
-      // Full navigation, not router.push() — guarantees the browser's next
-      // request (including the middleware check) carries the just-set
-      // session cookie, with no client-router/middleware timing to reason about.
+      console.log('[Login] Success response:', res);
+      const rawDest = redirectTo ? decodeURIComponent(redirectTo) : '/overview';
+      const destination = rawDest.startsWith('/') ? rawDest : '/overview';
+      console.log('[Login] Navigating to destination:', destination);
       window.location.href = destination;
     } catch (err: any) {
-      setError(err instanceof ApiError ? err.message : 'Unable to sign in. Please try again.');
+      console.error('[Login] Error caught during sign in:', err);
+      setError(err instanceof ApiError ? err.message : (err?.message || 'Unable to sign in. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -86,13 +102,23 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form
+            action="javascript:void(0);"
+            method="POST"
+            onSubmit={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleSubmit(e);
+            }}
+            className="space-y-5"
+          >
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1.5">
                 Email
               </label>
               <input
                 id="email"
+                name="email"
                 type="email"
                 autoComplete="username"
                 required
@@ -112,11 +138,19 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
               </label>
               <input
                 id="password"
+                name="password"
                 type="password"
                 autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSubmit(e);
+                  }
+                }}
                 disabled={submitting}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder:text-slate-500
                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
@@ -127,8 +161,13 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
 
             <button
               id="btn-sign-in"
-              type="submit"
-              disabled={submitting || !email || !password}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleSubmit(e);
+              }}
+              disabled={submitting}
               className="w-full px-5 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 active:bg-blue-700
                          disabled:opacity-50 disabled:cursor-not-allowed
                          text-white font-semibold text-sm shadow-lg shadow-blue-600/20
@@ -147,5 +186,17 @@ export default function LoginPage({ searchParams }: LoginPageProps) {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white text-sm">
+        Loading…
+      </div>
+    }>
+      <LoginForm />
+    </React.Suspense>
   );
 }

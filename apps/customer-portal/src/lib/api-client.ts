@@ -28,7 +28,10 @@ export class ApiError extends Error {
 }
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1/customer';
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  (typeof window !== 'undefined'
+    ? '/api/v1/customer'
+    : 'http://localhost:3001/api/v1/customer');
 
 export async function apiClient<T>(
   endpoint: string,
@@ -40,9 +43,14 @@ export async function apiClient<T>(
     headers.set('Content-Type', 'application/json');
   }
 
+  // Normalize endpoint to prevent double '/customer' if caller includes it
+  const normalizedEndpoint = endpoint.startsWith('/customer/')
+    ? endpoint.slice('/customer'.length)
+    : endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${endpoint}`, {
+    response = await fetch(`${API_BASE}${normalizedEndpoint}`, {
       ...options,
       headers,
       credentials: 'include', // sends session cookie automatically

@@ -30,7 +30,11 @@ export class ApiError extends Error {
   }
 }
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001/api/v1/vendor';
+export const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  (typeof window !== 'undefined'
+    ? '/api/v1/vendor'
+    : 'http://localhost:3001/api/v1/vendor');
 
 export async function apiClient<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
@@ -39,9 +43,14 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
     headers.set('Content-Type', 'application/json');
   }
 
+  // Normalize endpoint to prevent double '/vendor' if caller includes it
+  const normalizedEndpoint = endpoint.startsWith('/vendor/')
+    ? endpoint.slice('/vendor'.length)
+    : endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${endpoint}`, {
+    response = await fetch(`${API_BASE}${normalizedEndpoint}`, {
       ...options,
       headers,
       credentials: 'include', // sends the session cookie automatically
